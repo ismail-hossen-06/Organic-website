@@ -7,8 +7,9 @@
 const CONFIG = {
   // 👇 Google Apps Script থেকে পাওয়া Web app URL (/exec দিয়ে শেষ হবে)
   //    খালি রাখলে "ডেমো মোডে" চলবে — অর্ডার শিটে যাবে না।
-  SHEET_URL: "https://script.google.com/macros/s/AKfycbwiN7FWaCJvnYQgNSORZWqJ4GxrW7SLRjTyvVivP3QfDJaNzRKlk6GNmKst-rxBEq6P/exec",
+  SHEET_URL: "https://script.google.com/macros/s/AKfycbyELyRdex4H1M0nyVC4Jv7GcaQkBj_3UoNsxDsorJYZrYg7goCD9fij0P1u9dMyqVO5vg/exec",
 
+  SITE: "smoothlife", // ট্যাব ঠিক করতে এটি বদলাবেন না
   PRODUCT_NAME: "SmoothLife Protein Calcium Plus",
   REGULAR_PRICE: 1450,
   PRICE: 990,
@@ -82,11 +83,31 @@ function init() {
   document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
 }
 
+/* ---------- মালিকানা-মোড: লোকাল টেস্টের সময় শীটের তথ্য দেখায় ----------
+   নিজের PC (file://), লোকালহোস্ট, এডিটর প্রিভিউ বা ?debug=1 দিলে সক্রিয়।
+   আসল কাস্টমাররা (লাইভ সাইটে) শীটের লিংক কখনো দেখবে না। */
+const OWNER_MODE =
+  location.protocol === "file:" ||
+  location.protocol === "about:" ||
+  location.hostname === "localhost" ||
+  location.hostname === "127.0.0.1" ||
+  /[?&]debug=1/.test(location.search);
+
 /* ---------- পপ-আপ ---------- */
-function showModal(icon, title, msg) {
+function showModal(icon, title, msg, linkUrl, linkText) {
   $("modalIcon").textContent = icon;
   $("modalTitle").textContent = title;
   $("modalMsg").textContent = msg;
+  const a = $("modalLink");
+  if (a) {
+    if (linkUrl) {
+      a.href = linkUrl;
+      a.textContent = linkText || "📊 শিট খুলুন";
+      a.hidden = false;
+    } else {
+      a.hidden = true;
+    }
+  }
   $("modalOverlay").hidden = false;
 }
 function closeModal() { $("modalOverlay").hidden = true; }
@@ -189,18 +210,25 @@ async function placeOrder(e) {
     name: name,
     phone: phone,
     address: address,
+    site: CONFIG.SITE,
     product: CONFIG.PRODUCT_NAME,
     quantity: 1,
+    delivery_area: "সারাদেশে",
+    delivery_charge: CONFIG.DELIVERY_CHARGE,
     total: CONFIG.PRICE + CONFIG.DELIVERY_CHARGE,
   };
 
   try {
     if (CONFIG.SHEET_URL) {
-      // ✅ শিট থেকে আসল "success" উত্তর এলে তবেই সফল দেখানো হয়
+      // শিট সত্যিই success বললেই confirmation page-এ যাবে
       await sendToSheet(payload);
-      showModal("✅", "অর্ডার সফল হয়েছে! 🎉",
-        "ধন্যবাদ " + name + "! আপনার অর্ডারটি Google Sheet-এ জমা হয়েছে। আমাদের প্রতিনিধি খুব শীঘ্রই কল করে অর্ডারটি কনফার্ম করবেন। ইনশাআল্লাহ।");
       $("orderForm").reset();
+      try {
+        window.location.assign("confirmation.html");
+      } catch (_) {
+        // কিছু প্রিভিউ পরিবেশে navigation বন্ধ থাকতে পারে; অর্ডার ইতিমধ্যে জমা হয়েছে।
+        showModal("✅", "অর্ডার সফল হয়েছে!", "আপনার অর্ডার জমা হয়েছে। আমরা শীঘ্রই যোগাযোগ করব।");
+      }
     } else {
       // ডেমো মোড: শিট URL বসানো নেই
       try {
@@ -226,7 +254,7 @@ async function placeOrder(e) {
 window.slTestSheet = async function () {
   if (!CONFIG.SHEET_URL) { console.log("⚠ SHEET_URL খালি — script.js-এ URL বসান"); return { ok: false }; }
   try {
-    const r = await sendToSheet({ name: "🔌 কনসোল টেস্ট", phone: "01700000000", address: "টেস্ট সারি — মুছে ফেলুন", product: "TEST", quantity: 0, total: 0 });
+    const r = await sendToSheet({ name: "🔌 কনসোল টেস্ট", phone: "01700000000", address: "টেস্ট সারি — মুছে ফেলুন", site: CONFIG.SITE, product: "TEST", quantity: 1, total: 0 });
     console.log("✅ শিট কানেকশন ঠিক আছে!", r);
     return { ok: true, response: r };
   } catch (err) {
@@ -234,4 +262,3 @@ window.slTestSheet = async function () {
     return { ok: false, error: String(err) };
   }
 };
-
